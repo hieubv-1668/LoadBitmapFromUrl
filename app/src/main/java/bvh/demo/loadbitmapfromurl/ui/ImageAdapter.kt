@@ -1,6 +1,8 @@
 package bvh.demo.loadbitmapfromurl.ui
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -19,7 +21,8 @@ import java.net.URL
 
 class ImageAdapter(
     private val lifecycleScope: LifecycleCoroutineScope,
-    private val exceptionHandler: CoroutineExceptionHandler
+    private val exceptionHandler: CoroutineExceptionHandler,
+    private val memoryCache: LruCache<String, Bitmap>
 ) : ListAdapter<ImageModel, ImageAdapter.Companion.ImageViewHolder>(
     ImageDiffCallback()
 ) {
@@ -46,31 +49,45 @@ class ImageAdapter(
 
     override fun onBindViewHolder(holder: ImageViewHolder, position: Int) {
         holder.itemView.imv_image_url.tag = getItem(position).id
-        holder.bind(getItem(position), lifecycleScope, exceptionHandler)
+        holder.bind(getItem(position), lifecycleScope, exceptionHandler, memoryCache)
     }
 
     companion object {
-        class ImageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        class ImageViewHolder(itemView: View) :
+            RecyclerView.ViewHolder(itemView) {
             fun bind(
                 imageModel: ImageModel,
                 lifecycleScope: LifecycleCoroutineScope,
-                exceptionHandler: CoroutineExceptionHandler
+                exceptionHandler: CoroutineExceptionHandler,
+                memoryCache: LruCache<String, Bitmap>
             ) {
                 itemView.imv_image_url.setImageBitmap(null)
-                setImageBitmap(imageModel, itemView.imv_image_url, lifecycleScope, exceptionHandler)
+                setImageBitmap(
+                    imageModel,
+                    itemView.imv_image_url,
+                    lifecycleScope,
+                    exceptionHandler,
+                    memoryCache
+                )
             }
 
             private fun setImageBitmap(
                 imageModel: ImageModel,
                 imageView: ImageView,
                 lifecycleScope: LifecycleCoroutineScope,
-                exceptionHandler: CoroutineExceptionHandler
+                exceptionHandler: CoroutineExceptionHandler,
+                memoryCache: LruCache<String, Bitmap>
             ) {
                 lifecycleScope.launch(Dispatchers.IO + exceptionHandler) {
                     val bitmapImage = BitmapFactory.decodeStream(URL(imageModel.url).openStream())
+                    synchronized(memoryCache) {
+                        if (memoryCache.get(imageModel.url) == null) {
+                            memoryCache.put(imageModel.url, bitmapImage)
+                        }
+                    }
                     if (imageView.tag == imageModel.id) {
                         launch(Dispatchers.Main) {
-                            imageView.setImageBitmap(bitmapImage)
+                            imageView.setImageBitmap(memoryCache.get(imageModel.url))
                         }
                     }
                 }
