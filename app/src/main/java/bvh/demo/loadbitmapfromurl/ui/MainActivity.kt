@@ -1,7 +1,9 @@
 package bvh.demo.loadbitmapfromurl.ui
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
+import android.util.LruCache
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import bvh.demo.loadbitmapfromurl.R
@@ -11,7 +13,6 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 
 class MainActivity : AppCompatActivity() {
     private lateinit var imageAdapter: ImageAdapter
-
     private val handler = CoroutineExceptionHandler { _, exception ->
         Log.d("CoroutineExeption", exception.message.toString())
     }
@@ -23,7 +24,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupViews() {
-        imageAdapter = ImageAdapter(lifecycleScope, handler)
+        val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+        val cacheSize = maxMemory / 8
+        memoryCache = object : LruCache<String, Bitmap>(cacheSize) {
+            override fun sizeOf(key: String, value: Bitmap): Int {
+                return value.byteCount / 1024
+            }
+        }
+        imageAdapter = ImageAdapter(lifecycleScope, handler, memoryCache)
         imageAdapter.submitList(getData())
         rv_image.adapter = imageAdapter
     }
@@ -106,4 +114,13 @@ class MainActivity : AppCompatActivity() {
             "https://i.pinimg.com/originals/e1/95/c6/e195c69227affe9c68db10bafc026964.jpg"
         )
     )
+
+    override fun onDestroy() {
+        super.onDestroy()
+        memoryCache.evictAll()
+    }
+
+    companion object {
+        lateinit var memoryCache: LruCache<String, Bitmap>
+    }
 }
